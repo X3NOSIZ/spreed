@@ -291,19 +291,6 @@ SimpleWebRTC.prototype.handlePeerStreamAdded = function(peer) {
 
 		this.emit('videoAdded', video, audio, peer)
 	}
-
-	// send our mute status to new peer if we're muted
-	// currently called with a small delay because it arrives before
-	// the video element is created otherwise (which happens after
-	// the async setRemoteDescription-createAnswer)
-	window.setTimeout(function() {
-		if (!self.webrtc.isAudioEnabled()) {
-			peer.send('mute', { name: 'audio' })
-		}
-		if (!self.webrtc.isVideoEnabled()) {
-			peer.send('mute', { name: 'video' })
-		}
-	}, 250)
 }
 
 SimpleWebRTC.prototype.handlePeerStreamRemoved = function(peer) {
