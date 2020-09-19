@@ -495,10 +495,41 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 		}
 	}
 
+	let sendCurrentMediaStateWithRepetitionTimeout = null
+
+	function sendCurrentMediaStateWithRepetition(timeout) {
+		if (!timeout) {
+			timeout = 0
+
+			clearTimeout(sendCurrentMediaStateWithRepetitionTimeout)
+		}
+
+		sendCurrentMediaStateWithRepetitionTimeout = setTimeout(function() {
+			sendCurrentMediaState()
+
+			if (!timeout) {
+				timeout = 1
+			} else {
+				timeout *= 2
+			}
+
+			if (timeout > 8) {
+				sendCurrentMediaStateWithRepetitionTimeout = null
+				return
+			}
+
+			sendCurrentMediaStateWithRepetition(timeout)
+		}, timeout)
+	}
+
 	function handleIceConnectionStateConnected(peer) {
 		// Send the current information about the video and microphone
 		// state.
-		sendCurrentMediaState()
+		if (!signaling.hasFeature('mcu')) {
+			sendCurrentMediaState()
+		} else {
+			sendCurrentMediaStateWithRepetition()
+		}
 
 		if (signaling.settings.userId === null) {
 			const currentGuestNick = store.getters.getDisplayName()
