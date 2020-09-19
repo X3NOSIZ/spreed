@@ -444,44 +444,6 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 		webrtc.sendDirectlyToAll(channel, message, payload)
 	}
 
-	// The nick name below the avatar is distributed through the DataChannel
-	// of the PeerConnection and only sent once during establishment. For
-	// the MCU case, the sending PeerConnection is created once and then
-	// never changed when more participants join. For this, we periodically
-	// send the nick to all other participants through the sending
-	// PeerConnection.
-	//
-	// TODO: The name for the avatar should come from the participant list
-	// which already has all information and get rid of using the
-	// DataChannel for this.
-	function stopSendingNick() {
-		if (!ownPeer.nickInterval) {
-			return
-		}
-
-		clearInterval(ownPeer.nickInterval)
-		ownPeer.nickInterval = null
-	}
-	function startSendingNick() {
-		if (!signaling.hasFeature('mcu')) {
-			return
-		}
-
-		stopSendingNick(peer)
-		ownPeer.nickInterval = setInterval(function() {
-			let payload
-			if (signaling.settings.userId === null) {
-				payload = store.getters.getDisplayName()
-			} else {
-				payload = {
-					'name': store.getters.getDisplayName(),
-					'userid': signaling.settings.userId,
-				}
-			}
-			ownPeer.sendDirectly('status', 'nickChanged', payload)
-		}, 1000)
-	}
-
 	function sendCurrentMediaState() {
 		if (!webrtc.webrtc.isVideoEnabled()) {
 			webrtc.webrtc.emit('videoOff')
@@ -493,6 +455,19 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 		} else {
 			webrtc.webrtc.emit('audioOn')
 		}
+	}
+
+	function sendCurrentNick() {
+		let payload
+		if (signaling.settings.userId === null) {
+			payload = store.getters.getDisplayName()
+		} else {
+			payload = {
+				'name': store.getters.getDisplayName(),
+				'userid': signaling.settings.userId,
+			}
+		}
+		ownPeer.sendDirectly('status', 'nickChanged', payload)
 	}
 
 	let sendCurrentMediaStateWithRepetitionTimeout = null
@@ -522,6 +497,33 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 		}, timeout)
 	}
 
+	let sendCurrentNickWithRepetitionTimeout = null
+
+	function sendCurrentNickWithRepetition(timeout) {
+		if (!timeout) {
+			timeout = 0
+
+			clearTimeout(sendCurrentNickWithRepetitionTimeout)
+		}
+
+		sendCurrentNickWithRepetitionTimeout = setTimeout(function() {
+			sendCurrentNick()
+
+			if (!timeout) {
+				timeout = 1
+			} else {
+				timeout *= 2
+			}
+
+			if (timeout > 8) {
+				sendCurrentNickWithRepetitionTimeout = null
+				return
+			}
+
+			sendCurrentNickWithRepetition(timeout)
+		}, timeout)
+	}
+
 	function handleIceConnectionStateConnected(peer) {
 		// Send the current information about the video and microphone
 		// state.
@@ -531,9 +533,11 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 			sendCurrentMediaStateWithRepetition()
 		}
 
-		if (signaling.settings.userId === null) {
+		if (signaling.settings.userId === null && !signaling.hasFeature('mcu')) {
 			const currentGuestNick = store.getters.getDisplayName()
 			sendDataChannelToAll('status', 'nickChanged', currentGuestNick)
+		} else if (signaling.hasFeature('mcu')) {
+			sendCurrentNickWithRepetition()
 		}
 
 		// Reset ice restart counter for peer
@@ -701,8 +705,6 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 		if (peer.type === 'video') {
 			if (peer.id === signaling.getSessionId()) {
 				console.debug('Not adding ICE connection state handler for own peer', peer)
-
-				startSendingNick()
 			} else {
 				setHandlerForIceConnectionStateChange(peer)
 			}
@@ -758,7 +760,6 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 			clearInterval(peer.check_video_interval)
 			peer.check_video_interval = null
 		}
-		stopSendingNick(peer)
 	}
 
 	function startPeerCheckMedia(peer, stream) {
