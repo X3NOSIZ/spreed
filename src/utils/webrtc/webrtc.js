@@ -482,9 +482,7 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 		}, 1000)
 	}
 
-	function handleIceConnectionStateConnected(peer) {
-		// Send the current information about the video and microphone
-		// state.
+	function sendCurrentMediaState() {
 		if (!webrtc.webrtc.isVideoEnabled()) {
 			webrtc.webrtc.emit('videoOff')
 		} else {
@@ -495,6 +493,13 @@ export default function initWebRTC(signaling, _callParticipantCollection, _local
 		} else {
 			webrtc.webrtc.emit('audioOn')
 		}
+	}
+
+	function handleIceConnectionStateConnected(peer) {
+		// Send the current information about the video and microphone
+		// state.
+		sendCurrentMediaState()
+
 		if (signaling.settings.userId === null) {
 			const currentGuestNick = store.getters.getDisplayName()
 			sendDataChannelToAll('status', 'nickChanged', currentGuestNick)
